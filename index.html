@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <link rel="manifest" href="manifest.json">
+
+    <meta name="theme-color" content="#ffffff">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+
+    <meta charset="UTF-8">
+    <title>Building 3241 - 2026 Invoices</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f6f8;
+            text-align: center;
+        }
+
+        h1 {
+            margin-top: 30px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(3, 130px);
+            gap: 15px;
+            justify-content: center;
+            margin: 40px auto;
+        }
+
+        .unit {
+            padding: 15px;
+            min-height: 100px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            border: 1px solid #ccc;
+            background-color: #ffffff;
+            transition: 0.2s;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .unit:hover {
+            transform: scale(1.05);
+        }
+
+        .paid {
+            background-color: #d4edda;
+            border: 1px solid #28a745;
+        }
+
+        .unpaid {
+            background-color: #f8d7da;
+            border: 1px solid #dc3545;
+        }
+
+        .summary {
+            margin-top: 40px;
+            padding: 20px;
+            background: white;
+            width: 420px;
+            margin-left: auto;
+            margin-right: auto;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
+            text-align: left;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="loginPage">
+        <h2>Building 3241 System Login</h2>
+
+        <input type="text" id="username" placeholder="Username"><br><br>
+        <input type="password" id="password" placeholder="Password"><br><br>
+        <button onclick="login()">Login</button>
+
+        <p id="loginError" style="color:red;"></p>
+    </div>
+
+    <div id="mainPage" style="display:none;">
+
+        <h1>Building 3241</h1>
+        <h3>2026 Invoice Dashboard</h3>
+
+        <div style="text-align:right; margin-right:40px;">
+            Logged in as: <span id="currentUser"></span>
+            <button onclick="logout()">Logout</button>
+        </div>
+
+        <div class="grid" id="buildingGrid"></div>
+
+        <div class="summary">
+            <h3>Collection Summary</h3>
+            <p>Total Units: <span id="totalUnits"></span></p>
+            <p>Paid Units: <span id="paidCount"></span></p>
+            <p>Outstanding Units: <span id="unpaidCount"></span></p>
+            <hr>
+            <p>Total Collected: RM <span id="totalCollected"></span></p>
+            <p>Total Outstanding: RM <span id="totalOutstanding"></span></p>
+        </div>
+
+    </div>
+
+    <script>
+
+        // ===== CONFIGURATION =====
+
+        // Amount by floor
+        function getAmount(floor) {
+            if (floor == 53) return 731.70;
+            return 696.90;
+        }
+
+        // OWNER LIST (DO NOT TOUCH FORMAT)
+        const owners = {
+
+            // ===== FLOOR 53 =====
+            "53.0": "BTC FRESHMART S/B",
+            "53.1": "FRASER LAW KIEN HUA",
+            "53.2": "NG AH LEK & NICHOLAS KHO TZE JIA",
+
+            // ===== FLOOR 54 =====
+            "54.0": "BTC FRESHMART S/B",
+            "54.1": "CHARLES LEE BOON FONG & DENIS LEE YIN FONG",
+            "54.2": "NICHOLAS KHO TZE JIA & PECK NOI HWOY",
+
+            // ===== FLOOR 55 =====
+            "55.0": "ANNALIEW BUFFALO COMPANY",
+            "55.1": "JANANG SAWING",
+            "55.2": "QUATAMAI SDN BHD",
+
+            // ===== FLOOR 56 =====
+            "56.0": "KUEH ENTERPRISE",
+            "56.1": "JOHN SELLIMAN KENDAWANG & HELEN BUANG ARAN",
+            "56.2": "CHONG VUI FOH & HO NGET CHING",
+
+            // ===== FLOOR 57 =====
+            "57.0": "SAFEGUARDS SECURE SOLUTION (SARAWAK) SDN BHD",
+            "57.1": "SAFEGUARDS SECURE SOLUTION (SARAWAK) SDN BHD",
+            "57.2": "SAFEGUARDS SECURE SOLUTION (SARAWAK) SDN BHD",
+
+            // ===== FLOOR 58 =====
+            "58.0": "CHIMIQUE SDN BHD",
+            "58.1": "ECOSOL CONSULTANCY SDN BHD",
+            "58.2": "LANDSOFT SDN BHD",
+
+            // ===== FLOOR 59 =====
+            "59.0": "CHIMIQUE SDN BHD",
+            "59.1": "ECOSOL CONSULTANCY SDN BHD",
+            "59.2": "PROFESSIONAL COMPUTER SYSTEM SDN BHD",
+
+            // ===== FLOOR 60 =====
+            "60.0": "KUEH ENTERPRISE",
+            "60.1": "PU ENGINEERING SDN BHD",
+            "60.2": "PROFESSIONAL COMPUTER SYSTEM SDN BHD",
+
+            // ===== FLOOR 61 =====
+            "61.0": "KUEH ENTERPRISE",
+            "61.1": "PU ENGINEERING SDN BHD",
+            "61.2": "PU ENGINEERING SDN BHD",
+
+            // ===== FLOOR 62 =====
+            "62.0": "KUCHING BUDDHIST MEDITATION SOCIETY",
+            "62.1": "PU ENGINEERING SDN BHD",
+            "62.2": "PU ENGINEERING SDN BHD"
+        };
+
+        // ==========================
+        // Invoice issued data
+        let invoiceIssued = JSON.parse(localStorage.getItem("invoiceIssued")) || {};
+        let paidData = JSON.parse(localStorage.getItem("paidData")) || {};
+        let receiptCounter = parseInt(localStorage.getItem("receiptCounter")) || 1;
+
+        const grid = document.getElementById("buildingGrid");
+
+        let totalUnits = 0;
+        let paidCount = 0;
+        let unpaidCount = 0;
+        let totalCollected = 0;
+        let totalOutstanding = 0;
+
+        function generateOwnerColors() {
+
+            let ownerCount = {};
+            let ownerColors = {};
+            let colorPalette = [
+                "#e3f2fd", "#f3e5f5", "#e8f5e9",
+                "#fff3e0", "#fce4ec", "#ede7f6",
+                "#f1f8e9", "#e0f7fa"
+            ];
+
+            let colorIndex = 0;
+
+            // Count owners
+            Object.values(owners).forEach(name => {
+                if (!name) return;
+                ownerCount[name] = (ownerCount[name] || 0) + 1;
+            });
+
+            // Assign color if appears more than once
+            for (let name in ownerCount) {
+                if (ownerCount[name] > 1) {
+                    ownerColors[name] = colorPalette[colorIndex % colorPalette.length];
+                    colorIndex++;
+                }
+            }
+
+            return ownerColors;
+        }
+
+        let currentRole = null;
+
+        function login() {
+
+            let user = document.getElementById("username").value;
+            let pass = document.getElementById("password").value;
+
+            if (user === "admin" && pass === "admin") {
+                currentRole = "admin";
+            }
+            else if (user === "user" && pass === "user") {
+                currentRole = "user";
+            }
+            else {
+                document.getElementById("loginError").innerText = "Invalid login";
+                return;
+            }
+
+            document.getElementById("loginPage").style.display = "none";
+            document.getElementById("mainPage").style.display = "block";
+            document.getElementById("currentUser").innerText = currentRole;
+
+            render();
+        }
+
+        function logout() {
+            currentRole = null;
+            document.getElementById("mainPage").style.display = "none";
+            document.getElementById("loginPage").style.display = "block";
+        }
+
+        function render() {
+
+            grid.innerHTML = "";
+            totalUnits = paidCount = unpaidCount = totalCollected = totalOutstanding = 0;
+
+            const floors = [];
+            let ownerColors = generateOwnerColors();
+            for (let f = 62; f >= 53; f--) floors.push(f);
+
+            // +1 column for row labels
+            grid.style.gridTemplateColumns = "80px repeat(10, 110px)";
+
+            // ===== TOP FLOOR NUMBER HEADER =====
+            grid.appendChild(document.createElement("div")); // empty corner
+
+            floors.forEach(floor => {
+                let header = document.createElement("div");
+                header.style.fontSize = "20px";
+                header.style.fontWeight = "bold";
+                header.innerText = floor;
+                grid.appendChild(header);
+            });
+
+            // ===== LEVEL ROWS =====
+            for (let unit = 2; unit >= 0; unit--) {
+
+                let rowLabel = document.createElement("div");
+                rowLabel.style.fontWeight = "bold";
+                rowLabel.style.alignSelf = "center";
+
+                let levelText = (unit == 2) ? "L2" :
+                    (unit == 1) ? "L1" : "GF";
+
+                rowLabel.innerText = levelText;
+                grid.appendChild(rowLabel);
+
+                floors.forEach(floor => {
+
+                    let unitNumber = floor + "." + unit;
+                    let amount = getAmount(floor);
+                    totalUnits++;
+
+                    let div = document.createElement("div");
+                    div.classList.add("unit");
+
+                    if (unit == 0 && !paidData[unitNumber]) {
+                        div.style.backgroundColor = "#e2e3e5";
+                    }
+
+                    if (paidData[unitNumber]) {
+                        div.classList.add("paid");
+                        paidCount++;
+                        totalCollected += amount;
+                    } else {
+                        div.classList.add("unpaid");
+                        unpaidCount++;
+                        totalOutstanding += amount;
+                    }
+
+                    let issuedBadge = invoiceIssued[unitNumber] ?
+                        "<br><small style='color:blue;'>Issued</small>" :
+                        "<br><small style='color:gray;'>Not Issued</small>";
+
+                    let ownerName = owners[unitNumber] || "";
+                    let isPaid = paidData[unitNumber] ? true : false;
+
+                    let statusLabel = isPaid
+                        ? "<div style='background:#28a745;color:white;font-size:10px;padding:2px 6px;border-radius:4px;margin-top:4px;'>PAID</div>"
+                        : "<div style='background:#dc3545;color:white;font-size:10px;padding:2px 6px;border-radius:4px;margin-top:4px;'>UNPAID</div>";
+                    if (ownerColors[ownerName] && !paidData[unitNumber]) {
+                        div.style.backgroundColor = ownerColors[ownerName];
+                    }
+
+                    div.innerHTML = `
+    <div style="font-size:16px; font-weight:bold;">.${unit}</div>
+
+    <div style="font-size:11px; margin-top:4px; line-height:1.2;">
+        ${ownerName}
+    </div>
+
+    ${issuedBadge}
+
+    ${statusLabel}
+`;
+                    // Tooltip owner name
+                    let tooltip = owners[unitNumber] || "No Owner Recorded";
+
+                    if (invoiceIssued[unitNumber]) {
+                        tooltip += "\nInvoice Issued: " + invoiceIssued[unitNumber].date;
+                    }
+
+                    if (paidData[unitNumber]) {
+                        tooltip += "\nPaid: " + paidData[unitNumber].date;
+                    }
+
+                    div.title = tooltip;
+
+                    // SELECT UNIT (single click)
+                    div.onclick = function (e) {
+
+                        if (e.shiftKey) {
+                            toggleInvoiceIssued(unitNumber);
+                            return;
+                        }
+
+                        document.querySelectorAll(".unit").forEach(u => {
+                            u.style.outline = "";
+                        });
+
+                        div.style.outline = "3px solid #007bff";
+                    };
+
+                    // DOUBLE CLICK = OPEN PDF
+                    div.ondblclick = function () {
+                        window.open("invoices/" + unitNumber + ".pdf", "_blank");
+                    };
+
+                    // RIGHT CLICK = PAYMENT
+                    div.oncontextmenu = function (e) {
+                        e.preventDefault();
+
+                        if (currentRole !== "admin") {
+                            return;
+                        }
+
+                        handlePayment(unitNumber, amount);
+                    };
+
+
+
+                    grid.appendChild(div);
+                });
+            }
+
+            // ===== FLOOR SUBTOTAL ROW =====
+            let subtotalLabel = document.createElement("div");
+            subtotalLabel.style.fontWeight = "bold";
+            subtotalLabel.innerText = "Collected";
+            grid.appendChild(subtotalLabel);
+
+            floors.forEach(floor => {
+
+                let collected = 0;
+                let amount = getAmount(floor);
+
+                for (let unit = 0; unit <= 2; unit++) {
+                    let unitNumber = floor + "." + unit;
+                    if (paidData[unitNumber]) {
+                        collected += amount;
+                    }
+                }
+
+                let subtotalDiv = document.createElement("div");
+                subtotalDiv.style.fontWeight = "bold";
+                subtotalDiv.style.fontSize = "13px";
+                subtotalDiv.innerText = "RM " + collected.toFixed(0);
+
+                grid.appendChild(subtotalDiv);
+            });
+
+            updateSummary();
+        }
+
+        function toggleInvoiceIssued(unitNumber) {
+
+            if (currentRole !== "admin") {
+                alert("View only mode.");
+                return;
+            }
+
+            if (invoiceIssued[unitNumber]) {
+                delete invoiceIssued[unitNumber];
+            } else {
+                invoiceIssued[unitNumber] = {
+                    date: new Date().toLocaleDateString()
+                };
+            }
+
+            localStorage.setItem("invoiceIssued", JSON.stringify(invoiceIssued));
+            render();
+        }
+
+        function handlePayment(unit, amount) {
+
+            if (currentRole !== "admin") {
+                alert("View only mode. Admin only.");
+                return;
+            }
+
+            if (paidData[unit]) {
+                if (confirm("Mark this unit as UNPAID?")) {
+                    delete paidData[unit];
+                    localStorage.setItem("paidData", JSON.stringify(paidData));
+                    render();
+                }
+                return;
+            }
+
+            // Create modal style selection
+            let method = prompt("Enter payment method:\n1 = Cash\n2 = Bank Transfer\n3 = Cheque");
+
+            if (!method) return;
+
+            if (method == "1") method = "Cash";
+            else if (method == "2") method = "Bank Transfer";
+            else if (method == "3") method = "Cheque";
+            else {
+                alert("Invalid selection");
+                return;
+            }
+
+            let receiptNo = "R2026-" + receiptCounter.toString().padStart(4, '0');
+            receiptCounter++;
+            localStorage.setItem("receiptCounter", receiptCounter);
+
+            let today = new Date().toLocaleDateString();
+
+            paidData[unit] = {
+                date: today,
+                method: method,
+                receipt: receiptNo
+            };
+
+            localStorage.setItem("paidData", JSON.stringify(paidData));
+
+            generateReceipt(unit, amount, today, method, receiptNo);
+            render();
+        }
+
+        function updateSummary() {
+            document.getElementById("totalUnits").innerText = totalUnits;
+            document.getElementById("paidCount").innerText = paidCount;
+            document.getElementById("unpaidCount").innerText = unpaidCount;
+            document.getElementById("totalCollected").innerText = totalCollected.toFixed(2);
+            document.getElementById("totalOutstanding").innerText = totalOutstanding.toFixed(2);
+        }
+
+        function generateReceipt(unit, amount, date, method, receiptNo) {
+
+            let ownerName = owners[unit] || "N/A";
+
+            let receiptWindow = window.open("", "_blank");
+
+            receiptWindow.document.write(`
+        <html>
+        <head>
+        <title>E-Receipt</title>
+        <style>
+            body { font-family: Arial; padding:40px; }
+            .header { text-align:center; margin-bottom:30px; }
+            .header h2 { margin:5px 0; }
+            .box { margin-top:20px; }
+            .row { margin:8px 0; }
+            .footer { margin-top:40px; font-size:12px; color:gray; }
+        </style>
+        </head>
+
+        <body>
+
+        <div class="header">
+            <h2>Building 3241 Management</h2>
+            <p>Maintenance, Fire Insurance and Quit Rent Collection</p>
+            <p>Year 2026</p>
+        </div>
+
+        <hr>
+
+        <div class="box">
+            <div class="row"><strong>Receipt No:</strong> ${receiptNo}</div>
+            <div class="row"><strong>Date:</strong> ${date}</div>
+            <div class="row"><strong>Unit:</strong> ${unit}</div>
+            <div class="row"><strong>Owner:</strong> ${ownerName}</div>
+            <div class="row"><strong>Payment Method:</strong> ${method}</div>
+            <div class="row"><strong>Amount Paid:</strong> RM ${amount.toFixed(2)}</div>
+        </div>
+
+        <hr>
+
+        <p>
+        Payment received for Maintenance, Fire Insurance and Quit Rent for the year 2026.
+        </p>
+
+        <div class="footer">
+            This is a computer-generated receipt. No signature is required.
+        </div>
+
+        <br><br>
+        <button onclick="window.print()">Print / Save as PDF</button>
+
+        </body>
+        </html>
+    `);
+        }
+
+        render();
+
+        if ("serviceWorker" in navigator) {
+            window.addEventListener("load", () => {
+                navigator.serviceWorker.register("service-worker.js");
+            });
+        }
+
+    </script>
+
+
+</body>
+
+</html>
