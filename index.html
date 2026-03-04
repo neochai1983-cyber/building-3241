@@ -155,6 +155,55 @@
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
             text-align: left;
         }
+
+        /* ===== MODAL STYLE ===== */
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.4);
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
+        }
+
+        .modal-content {
+            background: white;
+            width: 90%;
+            max-width: 350px;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal-buttons button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .modal-buttons button:first-child {
+            background: #28a745;
+            color: white;
+        }
+
+        .modal-buttons button:nth-child(2) {
+            background: #007bff;
+            color: white;
+        }
+
+        .modal-buttons button:nth-child(3) {
+            background: #ffc107;
+        }
+
+        .modal-buttons button:last-child {
+            background: #ccc;
+        }
     </style>
 </head>
 
@@ -197,9 +246,27 @@
 
     </div>
 
+    <!-- ACTION MODAL -->
+    <div id="actionModal" class="modal">
+        <div class="modal-content">
+            <h3 id="modalUnitTitle"></h3>
+            <p id="modalOwnerName" style="color:gray;"></p>
+
+            <div class="modal-buttons">
+                <button id="payBtn"></button>
+                <button onclick="openInvoice()">Open Invoice</button>
+                <button id="issuedBtn"></button>
+                <button onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script>
 
         // ===== CONFIGURATION =====
+
+        let selectedUnit = null;
+        let selectedAmount = 0;
 
         // Amount by floor
         function getAmount(floor) {
@@ -433,18 +500,8 @@
                     div.title = tooltip;
 
                     // SELECT UNIT (single click)
-                    div.onclick = function (e) {
-
-                        if (e.shiftKey) {
-                            toggleInvoiceIssued(unitNumber);
-                            return;
-                        }
-
-                        document.querySelectorAll(".unit").forEach(u => {
-                            u.style.outline = "";
-                        });
-
-                        div.style.outline = "3px solid #007bff";
+                    div.onclick = function () {
+                        openActionMenu(unitNumber, amount);
                     };
 
                     // DOUBLE CLICK = OPEN PDF
@@ -463,7 +520,26 @@
                         handlePayment(unitNumber, amount);
                     };
 
+                    // ===== MOBILE LONG PRESS SUPPORT =====
+                    let pressTimer;
 
+                    div.addEventListener("touchstart", function (e) {
+
+                        if (currentRole !== "admin") return;
+
+                        pressTimer = setTimeout(function () {
+                            handlePayment(unitNumber, amount);
+                        }, 700); // 700ms hold
+
+                    });
+
+                    div.addEventListener("touchend", function () {
+                        clearTimeout(pressTimer);
+                    });
+
+                    div.addEventListener("touchmove", function () {
+                        clearTimeout(pressTimer);
+                    });
 
                     grid.appendChild(div);
                 });
@@ -637,6 +713,64 @@
             });
         }
 
+        function openActionMenu(unit, amount) {
+
+            selectedUnit = unit;
+            selectedAmount = amount;
+
+            let ownerName = owners[unit] || "N/A";
+
+            document.getElementById("modalUnitTitle").innerText = "Unit " + unit;
+            document.getElementById("modalOwnerName").innerText = ownerName;
+
+            let payBtn = document.getElementById("payBtn");
+            let issuedBtn = document.getElementById("issuedBtn");
+
+            if (paidData[unit]) {
+                payBtn.innerText = "Mark as UNPAID";
+                payBtn.style.background = "#dc3545";
+            } else {
+                payBtn.innerText = "Mark as PAID";
+                payBtn.style.background = "#28a745";
+            }
+
+            if (invoiceIssued[unit]) {
+                issuedBtn.innerText = "Remove Invoice Issued";
+            } else {
+                issuedBtn.innerText = "Mark Invoice Issued";
+            }
+
+            // Role restriction
+            if (currentRole !== "admin") {
+                payBtn.disabled = true;
+                issuedBtn.disabled = true;
+                payBtn.style.opacity = "0.5";
+                issuedBtn.style.opacity = "0.5";
+            } else {
+                payBtn.disabled = false;
+                issuedBtn.disabled = false;
+            }
+
+            payBtn.onclick = function () {
+                closeModal();
+                handlePayment(selectedUnit, selectedAmount);
+            };
+
+            issuedBtn.onclick = function () {
+                closeModal();
+                toggleInvoiceIssued(selectedUnit);
+            };
+
+            document.getElementById("actionModal").style.display = "flex";
+        }
+
+        function closeModal() {
+            document.getElementById("actionModal").style.display = "none";
+        }
+
+        function openInvoice() {
+            window.open("invoices/" + selectedUnit + ".pdf", "_blank");
+        }
     </script>
 
 
