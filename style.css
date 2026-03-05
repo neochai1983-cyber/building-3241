@@ -1,0 +1,26 @@
+body {
+    font-family: Arial;
+    text-align: center;
+}
+
+#grid {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 8px;
+    padding: 20px;
+}
+
+.unit {
+    padding: 15px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.paid {
+    background: #6fdc6f;
+}
+
+.unpaid {
+    background: #ff8a8a;
+}
